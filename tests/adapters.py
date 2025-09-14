@@ -36,7 +36,8 @@ def run_linear(
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
     linear = MyModule.Linear(d_in, d_out)
-    linear.load_state_dict({"linear.weight": weights})
+    # linear.load_state_dict({"linear.weight": weights})
+    linear.load_state_dict({"W": weights})
     return linear(in_features)
 
 
@@ -253,7 +254,7 @@ def run_multihead_self_attention_with_rope(
     rope = RotaryPEMultiHeadAttention(
         heads=num_heads, dim=d_model, theta=theta)
     full_freqs_cis = precompute_freqs_cis(
-        dim=d_model//num_heads, end=max_seq_len*2, theta=theta)
+        dim=d_model//num_heads, end=max_seq_len, theta=theta)
     rope.load_state_dict({
         "query.weight": q_proj_weight,
         "key.weight": k_proj_weight,
@@ -293,16 +294,18 @@ def run_rope(
     """
     from cs336_basics.transformer.module import apply_rotary_emb, precompute_freqs_cis
     full_freqs_cis = precompute_freqs_cis(
-        dim=d_k, end=max_seq_len*2, theta=theta)
+        dim=d_k, end=max_seq_len, theta=theta)  # (seq_len, d_k/2)
 
     batchsize, seq_len, d_kk = in_query_or_key.shape
 
     if token_positions is not None:
+        # (seq_len, d_k/2)
         freqs_cis = full_freqs_cis[:token_positions.shape[0], :]
     else:
         freqs_cis = full_freqs_cis[:seq_len]
 
-    in_query_or_key = in_query_or_key.view(batchsize, seq_len, 1, d_k)
+    in_query_or_key = in_query_or_key.view(
+        batchsize, seq_len, 1, d_k)  # (batchsize, seq_len, 1, d_k)
 
     result, _ = apply_rotary_emb(
         in_query_or_key, in_query_or_key, freqs_cis=freqs_cis)
@@ -380,7 +383,28 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    from cs336_basics.transformer.module import TransformerBlock
+    tfb = TransformerBlock(
+        dim=d_model,
+        heads=num_heads,
+        d_ff=d_ff,
+        max_seq_len=max_seq_len,
+        theta=theta
+    )
+
+    tfb.load_state_dict({
+        "rope.query.weight": weights['attn.q_proj.weight'],
+        "rope.key.weight":  weights['attn.k_proj.weight'],
+        "rope.value.weight":  weights['attn.v_proj.weight'],
+        "rope.output.weight":  weights['attn.output_proj.weight'],
+        "ln1.W": weights['ln1.weight'],
+        "ffn.w1.weight": weights['ffn.w1.weight'],
+        "ffn.w2.weight": weights['ffn.w2.weight'],
+        "ffn.w3.weight": weights['ffn.w3.weight'],
+        "ln2.W": weights['ln2.weight'],
+    })
+
+    return tfb(in_features)
 
 
 def run_transformer_lm(
@@ -485,7 +509,12 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
+    from cs336_basics.transformer.module import RMSNorm
+    rmsn=RMSNorm(d_model=d_model,eps=eps)
+    rmsn.load_state_dict({
+        "W":weights
+    })
+    return rmsn(in_features)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
@@ -527,7 +556,7 @@ def run_get_batch(
 
 def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
     """
-    Given a tensor of inputs, return the output of softmaxing the given `dim`
+    Given a tensor of inputs,   return the output of softmaxing the given `dim`
     of the input.
 
     Args:
@@ -538,7 +567,8 @@ def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, "
         Float[Tensor, "..."]: Tensor of with the same shape as `in_features` with the output of
         softmax normalizing the specified `dim`.
     """
-    raise NotImplementedError
+    from cs336_basics.transformer.module import softmax
+    return softmax(in_features,dim)
 
 
 def run_cross_entropy(
