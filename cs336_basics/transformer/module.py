@@ -236,7 +236,7 @@ class TransformerBlock(nn.Module):
         self.d_ff = d_ff
 
         self.ln1 = RMSNorm(self.dim,
-                              dtype=dtype).to(device=device) 
+                              dtype=dtype).to(device=device)
 
         self.ffn = Swiglu(self.dim, self.d_ff,
                           dtype=dtype).to(device=device)
