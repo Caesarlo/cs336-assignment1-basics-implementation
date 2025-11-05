@@ -226,7 +226,13 @@ class RotaryPEMultiHeadAttention(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, dim: int, heads: int, d_ff: int, max_seq_len: int, theta: float = 10000.0, dtype: torch.dtype = torch.float32, device=None):
+    def __init__(self, dim: int,
+                 heads: int,
+                 d_ff: int,
+                 max_seq_len: int,
+                 theta: float = 10000.0,
+                 dtype: torch.dtype = torch.float32,
+                 device=None):
         super(TransformerBlock, self).__init__()
         self.dim = dim
         self.heads = heads
@@ -236,13 +242,13 @@ class TransformerBlock(nn.Module):
         self.d_ff = d_ff
 
         self.ln1 = RMSNorm(self.dim,
-                              dtype=dtype).to(device=device)
+                           dtype=dtype).to(device=device)
 
         self.ffn = Swiglu(self.dim, self.d_ff,
                           dtype=dtype).to(device=device)
 
         self.ln2 = RMSNorm(self.dim,
-                              dtype=dtype).to(device=device)
+                           dtype=dtype).to(device=device)
 
         self.freqs_cis = precompute_freqs_cis(
             self.d_k, self.max_seq_len, theta=self.theta)
@@ -258,3 +264,42 @@ class TransformerBlock(nn.Module):
         out = x+self.ffn(self.ln2(x))
 
         return out
+
+
+class TransformerLM(nn.Module):
+    def __init__(self, vocab_size: int,
+                 context_length: int,
+                 num_layers: int,
+                 d_model: int,
+                 heads: int,
+                 d_ff: int,
+                 theta: float = 10000.0,
+                 dtype: torch.dtype = torch.float32,
+                 device=None):
+        super(TransformerLM, self).__init__()
+
+        self.vocab_size = vocab_size
+        self.context_length = context_length
+        self.num_layers = num_layers
+
+        self.embedding = Embedding(
+            vocab_size, d_model, device=device, dtype=dtype)
+        self.tf_blocks = nn.Sequential(
+            *[TransformerBlock(dim=d_model,
+                               heads=heads,
+                               d_ff=d_ff,
+                               max_seq_len=context_length,
+                               theta=theta,
+                               dtype=dtype,
+                               device=device) for _ in range(num_layers)])
+        self.norm = RMSNorm(d_model=d_model, device=device, dtype=dtype)
+        self.linear = Linear(d_in=d_model, d_out=vocab_size,
+                             device=device, dtype=dtype)
+
+    def forward(self, x):
+        x = self.embedding(x)
+        x = self.tf_blocks(x)
+        x = self.norm(x)
+        x = self.linear(x)
+        # x = softmax(x, dim=-1)
+        return x

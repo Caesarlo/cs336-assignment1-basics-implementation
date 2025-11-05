@@ -486,8 +486,30 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
-
+    from cs336_basics.transformer.module import TransformerLM
+    tflm = TransformerLM(vocab_size=vocab_size,
+                         context_length=context_length,
+                         num_layers=num_layers,
+                         d_model=d_model,
+                         heads=num_heads,
+                         d_ff=d_ff,
+                         theta=rope_theta,
+                         dtype=torch.float32)
+    tflm.load_state_dict({
+        'embedding.weight': weights['token_embeddings.weight'],
+        **{f'tf_blocks.{i}.rope.query.weight':  weights[f'layers.{i}.attn.q_proj.weight']       for i in range(num_layers)},
+        **{f'tf_blocks.{i}.rope.key.weight':    weights[f'layers.{i}.attn.k_proj.weight']       for i in range(num_layers)},
+        **{f'tf_blocks.{i}.rope.value.weight':  weights[f'layers.{i}.attn.v_proj.weight']       for i in range(num_layers)},
+        **{f'tf_blocks.{i}.rope.output.weight': weights[f'layers.{i}.attn.output_proj.weight']  for i in range(num_layers)},
+        **{f'tf_blocks.{i}.ln1.W':              weights[f'layers.{i}.ln1.weight']               for i in range(num_layers)},
+        **{f'tf_blocks.{i}.ffn.w1.weight':      weights[f'layers.{i}.ffn.w1.weight']            for i in range(num_layers)},
+        **{f'tf_blocks.{i}.ffn.w2.weight':      weights[f'layers.{i}.ffn.w2.weight']            for i in range(num_layers)},
+        **{f'tf_blocks.{i}.ffn.w3.weight':      weights[f'layers.{i}.ffn.w3.weight']            for i in range(num_layers)},
+        **{f'tf_blocks.{i}.ln2.W':              weights[f'layers.{i}.ln2.weight']               for i in range(num_layers)},
+        'norm.W': weights['ln_final.weight'],
+        'linear.W': weights['lm_head.weight'],
+    })
+    return tflm(in_indices)
 
 def run_rmsnorm(
     d_model: int,
@@ -510,9 +532,9 @@ def run_rmsnorm(
         RMSNorm of the `in_features`.
     """
     from cs336_basics.transformer.module import RMSNorm
-    rmsn=RMSNorm(d_model=d_model,eps=eps)
+    rmsn = RMSNorm(d_model=d_model, eps=eps)
     rmsn.load_state_dict({
-        "W":weights
+        "W": weights
     })
     return rmsn(in_features)
 
@@ -568,7 +590,7 @@ def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, "
         softmax normalizing the specified `dim`.
     """
     from cs336_basics.transformer.module import softmax
-    return softmax(in_features,dim)
+    return softmax(in_features, dim)
 
 
 def run_cross_entropy(
@@ -727,5 +749,5 @@ def run_train_bpe(
                 Merges are ordered by order of creation.
     """
     from cs336_basics.tokenizer.bpe_tokenizer import BPE_Tokenizer
-    bpe= BPE_Tokenizer(input_path, vocab_size, special_tokens)
+    bpe = BPE_Tokenizer(input_path, vocab_size, special_tokens)
     return bpe.train()

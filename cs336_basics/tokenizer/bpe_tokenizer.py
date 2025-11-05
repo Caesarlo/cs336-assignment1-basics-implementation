@@ -26,9 +26,6 @@ class BPE_Tokenizer:
         self.vocab: Dict[int, bytes] = {}
         self.inverse_vocab: Dict[bytes, int] = {}
 
-        self.regex_tokenizer = RegexTokenizer(
-            filepath=input_path, special_tokens=self.special_tokens)
-
     def _initialize_vocab(self) -> Dict[int, bytes]:
         vocab = {}
         inverse_vocab = {}
@@ -50,7 +47,10 @@ class BPE_Tokenizer:
     def _pretokenize_corpus(self) -> Dict[Tuple[bytes, ...], int]:
         word_freqs = defaultdict(int)
 
-        tokens = self.regex_tokenizer.pretokenize()
+        regex_tokenizer = RegexTokenizer(
+            filepath=self.input_path, special_tokens=self.special_tokens)
+
+        tokens = regex_tokenizer.pretokenize()
 
         for token in tokens:
             word_bytes = token.encode('utf-8')
@@ -128,11 +128,42 @@ class BPE_Tokenizer:
 
         return self.vocab, self.merges
 
-    def encode(self, text):
-        ...
+    def encode(self, text, special_tokens):
+        if not self.vocab or not self.merges or not self.inverse_vocab:
+            raise ValueError("Tokenizer has not been trained yet.")
+
+        regex_tokenizer = RegexTokenizer(
+            filepath=self.input_path, special_tokens=self.special_tokens)
+        tokens = regex_tokenizer.protokenize_text(text)
+
+        token_ids = []
+        for token in tokens:
+            token_bytes = list(map(lambda x: x.encode('utf-8'), token))
+
+            for merge_pair in self.merges:
+                a, b = merge_pair
+                i = 0
+                while i < len(token_bytes)-1:
+                    if token_bytes[i] == a and token_bytes[i+1] == b:
+                        token_bytes[i:i+2] = [a+b]
+                    else:
+                        i += 1
+
+            for t in token_bytes:
+                token_ids.append(self.inverse_vocab[t])
+
+        return token_ids
 
     def decode(self, tokens):
-        ...
+        if not self.vocab or not self.merges or not self.inverse_vocab:
+            raise ValueError("Tokenizer has not been trained yet.")
+
+        byte_array = bytearray()
+        for token_id in tokens:
+            token_bytes = self.vocab[token_id]
+            byte_array.extend(token_bytes)
+
+        return byte_array.decode('utf-8', errors='ignore')
 
 
 if __name__ == "__main__":
@@ -140,8 +171,12 @@ if __name__ == "__main__":
     special_token = ["<|endoftext|>"]
     # bpe = BPE_Tokenizer("../../data/TinyStoriesV2-GPT4-valid.txt",
     #                     1000, special_tokens=special_token)
-    bpe = BPE_Tokenizer("../../data/test.txt",
+    bpe = BPE_Tokenizer("../../data/TinyStoriesV2-GPT4-valid.txt",
                         1000, special_tokens=special_token)
     tokens, merges, = bpe.train()
-    logger.info(merges)
-    # logger.info(tokens[:20])
+    # logger.info(merges)
+    # logger.info(tokens)
+    logger.info(bpe.encode("Hello world! This is a test.",
+                special_tokens=special_token))
+    logger.info(bpe.decode(bpe.encode("Hello world! This is a test.",
+                special_tokens=special_token)))

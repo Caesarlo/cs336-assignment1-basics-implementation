@@ -77,3 +77,8 @@ class RegexTokenizer:
                 ) for chunk_item in chunk_parts for match in re.finditer(self.PAT, chunk_item)])
                 # Run pre-tokenization on your chunk and store the counts for each pre-token
         return tokens
+    
+    def protokenize_text(self,text:str)->List[str]:
+        text_parts = re.split(self.pattern, text)
+        tokens = [match.group() for chunk_item in text_parts for match in re.finditer(self.PAT, chunk_item)]
+        return tokens
